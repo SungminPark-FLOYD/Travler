@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
+import '../../data/services/address_resolver_service.dart';
 import '../../domain/model/media_item.dart';
 import '../../domain/model/travel_story.dart';
 import '../map/location_picker_screen.dart';
@@ -81,6 +82,21 @@ class _StoryEditorSheetState extends ConsumerState<StoryEditorSheet> {
       _placeController = TextEditingController();
       _companionsController = TextEditingController();
       _contentController = TextEditingController();
+
+      // 사진의 위치가 있으면 글로벌 도로명 주소를 조회하여 장소명 자동 추천 채우기
+      if (_selectedLocation != null) {
+        _autoFillAddress(_selectedLocation!.latitude, _selectedLocation!.longitude);
+      }
+    }
+  }
+
+  /// 좌표 기반 도로명 주소를 장소명에 자동 채우기
+  Future<void> _autoFillAddress(double lat, double lng) async {
+    final address = await AddressResolverService.instance.resolveAddress(lat, lng);
+    if (mounted && _placeController.text.trim().isEmpty) {
+      setState(() {
+        _placeController.text = address;
+      });
     }
   }
 
@@ -117,6 +133,13 @@ class _StoryEditorSheetState extends ConsumerState<StoryEditorSheet> {
       setState(() {
         _selectedLocation = result;
       });
+      // 핀으로 새 위치 선택 시 장소명 갱신 제안
+      final address = await AddressResolverService.instance.resolveAddress(result.latitude, result.longitude);
+      if (mounted && _placeController.text.trim().isEmpty) {
+        setState(() {
+          _placeController.text = address;
+        });
+      }
     }
   }
 
@@ -142,6 +165,14 @@ class _StoryEditorSheetState extends ConsumerState<StoryEditorSheet> {
         _selectedMedia = selectedResult;
         if (_coverMediaId == null || !_selectedMedia.any((m) => m.id == _coverMediaId)) {
           _coverMediaId = _selectedMedia.first.id;
+        }
+        // 선택된 미디어 중 위치가 있으면 위치 없던 경우 자동 채우기
+        if (_selectedLocation == null) {
+          final withLoc = _selectedMedia.where((m) => m.hasLocation).firstOrNull;
+          if (withLoc != null) {
+            _selectedLocation = withLoc.location;
+            _autoFillAddress(withLoc.location!.latitude, withLoc.location!.longitude);
+          }
         }
       });
     }

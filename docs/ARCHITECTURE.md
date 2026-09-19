@@ -9,7 +9,9 @@
 1. **Local-First & Zero-Upload**: 미디어 원본 파일이나 사용자 메타데이터를 외부 서버에 업로드하지 않고 기기 내부에서만 처리합니다.
 2. **Layered & Feature-Driven**: UI, 상태 관리, 비즈니스 로직, 데이터 접근 계층을 명확히 분리하여 유지보수성을 확보합니다.
 3. **Pure Flutter Widget Map Canvas**: `flutter_map (OpenStreetMap)`을 채택하여 API 키 제약 없이 사진 썸네일 위젯 마커를 부드럽게 렌더링하고 오프라인 캐싱을 지원합니다.
-4. **Reactive State Management**: Riverpod을 활용한 단방향 데이터 흐름 및 비동기 상태의 선언적 관리.
+4. **Multi-Layered Metadata Fallback**: EXIF 손상, 메신저 다운로드 등으로 일시나 위치가 왜곡된 경우 파일명 정규식 타임스탬프 분석 및 사용자 수동 보정 UI를 통한 4단계 방어 전략을 구축합니다.
+5. **Global Reverse Geocoding with Smart Caching**: 네이티브 Geocoder를 활용하여 전 세계(한국/해외) 좌표를 실제 도로명 주소로 변환하며, 약 100m 단위 인메모리 캐싱으로 배터리와 통신 자원을 절감합니다.
+6. **Reactive State Management**: Riverpod을 활용한 단방향 데이터 흐름 및 비동기 상태의 선언적 관리.
 
 ---
 
@@ -19,32 +21,32 @@
 graph TD
     subgraph UI_Layer [Presentation Layer]
         MapScreen[FlutterMap Screen - Tile & Thumbnail Markers]
-        TimelineScreen[Timeline / Gallery Screen]
-        DetailScreen[Media Detail & Comment Sheet]
-        FolderScreen[Region / Album Filter Screen]
+        TimelineScreen[Timeline / Stories / Gallery Screen]
+        DetailSheet[Media Detail & Comment Sheet - Global Address]
+        StoryEditor[Story Editor Sheet - Auto Address Fill]
     end
 
     subgraph State_Layer [State Management - Riverpod]
         MediaProvider[Media & Location State]
-        CommentProvider[Comment & Note State]
-        FilterProvider[Time / Region Filter State]
+        StoryProvider[Travel Stories & Archive State]
     end
 
     subgraph Domain_Layer [Domain & Business Logic]
         ScanUseCase[Media Scanner & Metadata Extractor]
-        GeoUseCase[Reverse Geocoder & Cluster Resolver]
-        CommentUseCase[Comment CRUD & Association Manager]
+        DateParser[Filename Date Parser - Fallback Strategy]
+        GeoService[Address Resolver Service - Global Reverse Geocoding]
     end
 
     subgraph Data_Layer [Data & Storage Layer]
         PhotoManagerAdapter[Native MediaStore / Photos Adapter]
         LocalDatabase[Local DB: Drift / SQLite]
-        PrefStorage[App Settings: SharedPreferences]
+        NativeGeocoder[OS Geocoder: Google Play / Apple CoreLocation]
     end
 
     UI_Layer --> State_Layer
     State_Layer --> Domain_Layer
     Domain_Layer --> Data_Layer
+    GeoService --> NativeGeocoder
 ```
 
 ---
@@ -56,63 +58,30 @@ graph TD
   - OpenStreetMap 타일 레이어 기반 지도 렌더링 (API Key 불필요).
   - 사진 썸네일 원형 배지(Custom Flutter Widget)를 마커로 직접 표출.
   - 마커 선택 시 해당 위치의 미디어 캐러셀 및 코멘트 요약 바텀시트 표출.
-- **Gallery / Timeline View**:
-  - 일자별(연/월/일) 그리드 뷰 및 지역별 묶음 뷰.
-  - 위치 미지정(No-GPS) 미디어 필터 탭 제공.
-- **Media Detail & Viewer**:
-  - 고해상도 사진 줌/팬 뷰어 및 비디오 플레이어.
-  - 코멘트 작성, 수정, 태그 관리 모달.
+- **Media Detail Sheet (`MediaDetailSheet`)**:
+  - 고해상도 사진 줌/팬 뷰어 및 비디오 플레이어 연동.
+  - **글로벌 도로명 주소 실시간 변환 표출** (예: "제주시 애월읍", "Tokyo, Minato City").
+  - 코멘트 작성, 인라인 수정, 단건 삭제 모달.
+  - SafeArea 기반 하단 소프트키/제스처 바 가림 완벽 방지.
+- **Story Editor Sheet (`StoryEditorSheet`)**:
+  - 선별된 사진/동영상 기반 독립된 여행 아카이브 생성.
+  - **좌표 기반 도로명 주소 장소명 자동 채우기 (`_autoFillAddress`)**.
+  - 수동 위치 지도 핀 피커 (`LocationPickerScreen`) 연동.
 
-### 3.2 State Management Layer (`flutter_riverpod`)
-- 상태의 불변성(Immutability) 유지 및 비동기 스트림/Future 통합 관리.
-- 화면 회전, 라이프사이클 변화 시 로컬 인덱싱 데이터 캐시 유지.
+### 3.2 Domain Layer & Fallback 파이프라인
+- **다계층 촬영 일시 복원 (Date Fallback Pipeline)**:
+  1. 1차: MediaStore `createDateTime` 취득.
+  2. 2차: 카카오톡/다운로드 파일명 정규식 분석 (`FilenameDateParser`). 시스템 일시와 24시간 이상 차이 시 파일명 실제 촬영일로 자동 복원.
+  3. 3차: 사용자 수동 일시 수정 기능 지원.
+- **글로벌 역지오코딩 (`AddressResolverService`)**:
+  - OS Geocoder API를 호출하여 한국(행정동/도로명) 및 전 세계(거리/도시/주/국가) 표준 주소 변환.
+  - 반경 100m 단위(소수점 3자리) 인메모리 캐싱으로 네트워크/시스템 오버헤드 최소화.
+  - 오프라인 시 위경도 좌표로 안전한 자동 Fallback.
 
-### 3.3 Domain Layer
-- **Media Scanner**:
-  - 기기 저장소에서 신규/수정된 미디어 감지 (`photo_manager`).
-  - EXIF 메타데이터(위도, 경도, 촬영일시, 방위각 등) 파싱.
-- **Reverse Geocoding Service**:
-  - 위경도 좌표 기반 행정구역(국가, 시/도, 구/군, 동/읍/면) 매핑 및 로컬 캐싱.
-- **Comment Service**:
-  - 기기 내 고유 Media ID와 사용자 작성 메모/코멘트 간의 무결성 관리.
-
-### 3.4 Data & Storage Layer
-- **Photo Manager Plugin**: 플랫폼 네이티브 MediaStore(Android) 및 PhotoKit(iOS) 연동.
+### 3.3 Data & Storage Layer
 - **Local DB (`Drift` / SQLite)**:
-  - 사용자 코멘트, 즐겨찾기, 수동 위치 보정 데이터, 역지오코딩 캐시 저장.
-
----
-
-## 4. 로컬 데이터베이스 ERD (Drift / SQLite)
-
-```mermaid
-erDiagram
-    LOCAL_MEDIA_META {
-        string media_id PK "기기 미디어 고유 ID"
-        string file_path "로컬 파일 경로"
-        string mime_type "image/jpeg, video/mp4 등"
-        double latitude "위도 (nullable)"
-        double longitude "경도 (nullable)"
-        boolean is_manual_location "수동 위치 지정 여부"
-        datetime shot_at "촬영 일시"
-        string region_name "역지오코딩 지역명 (예: 서울시 종로구)"
-        datetime indexed_at "스캔 일시"
-    }
-
-    MEDIA_COMMENT {
-        int id PK "자동 증가 ID"
-        string media_id FK "LOCAL_MEDIA_META.media_id"
-        string content "사용자 작성 코멘트/메모"
-        datetime created_at "생성 일시"
-        datetime updated_at "수정 일시"
-    }
-
-    MEDIA_TAG {
-        int id PK "자동 증가 ID"
-        string media_id FK "LOCAL_MEDIA_META.media_id"
-        string tag_name "사용자 정의 태그"
-    }
-
-    LOCAL_MEDIA_META ||--o{ MEDIA_COMMENT : "has comments"
-    LOCAL_MEDIA_META ||--o{ MEDIA_TAG : "has tags"
-```
+  - `TravelStories`: 독립된 여행 아카이브 (제목, 장소, 동행인, 일기, 날짜, 좌표).
+  - `StoryMedia`: 스토리와 미디어 매핑 (대표 커버 사진 지정).
+  - `MediaComments`: 사진/영상별 사용자 메모 및 코멘트.
+  - `ManualLocations`: 사용자가 수동 보정한 좌표 영구 저장.
+  - `HiddenMedia`: 사용자가 숨긴 사진 ID 목록.

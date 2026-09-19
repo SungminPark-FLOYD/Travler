@@ -1,5 +1,6 @@
 import 'package:latlong2/latlong.dart';
 import 'package:photo_manager/photo_manager.dart' hide LatLng;
+import '../../core/utils/filename_date_parser.dart';
 import '../../core/utils/permission_helper.dart';
 import '../../domain/model/media_item.dart';
 import '../local/app_database.dart';
@@ -100,7 +101,7 @@ class MediaScannerService {
     return allItems;
   }
 
-  /// 단일 에셋 변환 (동기 좌표 우선 활용 + O(1) 인메모리 매핑)
+  /// 단일 에셋 변환 (동기 좌표 우선 활용 + 파일명 일시 파싱 Fallback + O(1) 인메모리 매핑)
   Future<MediaItem?> _processAsset({
     required AssetEntity asset,
     required Set<String> hiddenIds,
@@ -144,7 +145,18 @@ class MediaScannerService {
       }
     }
 
-    // 4. 인메모리 코멘트 매핑 (O(1))
+    // 4. 촬영 일시 결정: 파일명 기반 타임스탬프 분석 우선 보정
+    // 카카오톡/다운로드 파일 등 복사 시 createDateTime이 변형된 경우 파일명 정규식으로 복원
+    DateTime resolvedShotAt = asset.createDateTime;
+    final parsedDate = FilenameDateParser.parse(asset.title);
+    if (parsedDate != null) {
+      // 파일명에 유효한 날짜가 있고, 시스템 생성일과 24시간 이상 차이 나면 파일명 날짜로 복원
+      if (asset.createDateTime.difference(parsedDate).abs().inHours > 24) {
+        resolvedShotAt = parsedDate;
+      }
+    }
+
+    // 5. 인메모리 코멘트 매핑 (O(1))
     final comments = allComments[asset.id] ?? const [];
 
     return MediaItem(
@@ -152,7 +164,7 @@ class MediaScannerService {
       title: asset.title,
       type: asset.type == AssetType.video ? MediaItemType.video : MediaItemType.image,
       location: location,
-      shotAt: asset.createDateTime,
+      shotAt: resolvedShotAt,
       duration: asset.duration,
       width: asset.width,
       height: asset.height,

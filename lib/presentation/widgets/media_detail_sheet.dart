@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../data/services/address_resolver_service.dart';
 import '../../domain/model/media_item.dart';
 import '../map/location_picker_screen.dart';
 import '../providers/media_provider.dart';
@@ -341,7 +342,7 @@ class _MediaDetailSheetState extends ConsumerState<MediaDetailSheet> {
                     ),
                     const SizedBox(height: 10),
 
-                    // 메타데이터 정보 카드
+                    // 메타데이터 정보 카드 (글로벌 도로명 주소 비동기 연동)
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(14),
@@ -386,13 +387,40 @@ class _MediaDetailSheetState extends ConsumerState<MediaDetailSheet> {
                             const Divider(height: 16),
                             if (currentItem.hasLocation)
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.place_outlined, color: Colors.redAccent, size: 16),
-                                  const SizedBox(width: 6),
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Icon(Icons.place_outlined, color: Colors.redAccent, size: 18),
+                                  ),
+                                  const SizedBox(width: 8),
                                   Expanded(
-                                    child: Text(
-                                      '위치: ${currentItem.location!.latitude.toStringAsFixed(5)}, ${currentItem.location!.longitude.toStringAsFixed(5)}',
-                                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                                    child: FutureBuilder<String>(
+                                      future: AddressResolverService.instance.resolveAddress(
+                                        currentItem.location!.latitude,
+                                        currentItem.location!.longitude,
+                                      ),
+                                      builder: (context, snapshot) {
+                                        final address = snapshot.data ?? '주소 변환 중...';
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              address,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.2,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${currentItem.location!.latitude.toStringAsFixed(5)}, ${currentItem.location!.longitude.toStringAsFixed(5)}',
+                                              style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                                            ),
+                                          ],
+                                        );
+                                      },
                                     ),
                                   ),
                                   TextButton(
