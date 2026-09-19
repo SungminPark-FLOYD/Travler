@@ -38,7 +38,7 @@ dependencies:
   # Utilities
   intl: ^0.19.0
   geocoding: ^5.0.0
-  receive_sharing_intent: ^1.9.0
+  receive_sharing_intent: 1.9.0
   image_picker: ^1.2.3
   native_exif: ^0.8.0
 
