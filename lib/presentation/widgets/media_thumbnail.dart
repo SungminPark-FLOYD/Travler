@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -27,6 +28,7 @@ class MediaThumbnail extends StatefulWidget {
 
 class _MediaThumbnailState extends State<MediaThumbnail> {
   Uint8List? _thumbnailBytes;
+  File? _imageFile;
   bool _isLoading = true;
 
   @override
@@ -38,30 +40,50 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
   @override
   void didUpdateWidget(covariant MediaThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id || oldWidget.highQuality != widget.highQuality) {
+    if (oldWidget.item.id != widget.item.id ||
+        oldWidget.item.filePath != widget.item.filePath ||
+        oldWidget.highQuality != widget.highQuality) {
       _loadThumbnail();
     }
   }
 
   Future<void> _loadThumbnail() async {
-    final asset = await AssetEntity.fromId(widget.item.id);
-    if (asset != null) {
-      final size = widget.highQuality
-          ? const ThumbnailSize(800, 800)
-          : const ThumbnailSize(200, 200);
-      final bytes = await asset.thumbnailDataWithSize(size);
-      if (mounted) {
-        setState(() {
-          _thumbnailBytes = bytes;
-          _isLoading = false;
-        });
+    // 1. 직접 로컬 파일 경로가 있는 경우 (image_picker 또는 공유 인텐트)
+    if (widget.item.filePath != null && widget.item.filePath!.isNotEmpty) {
+      final file = File(widget.item.filePath!);
+      if (await file.exists()) {
+        if (mounted) {
+          setState(() {
+            _imageFile = file;
+            _isLoading = false;
+          });
+        }
+        return;
       }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    }
+
+    // 2. PhotoManager AssetEntity 기반인 경우
+    try {
+      final asset = await AssetEntity.fromId(widget.item.id);
+      if (asset != null) {
+        final size = widget.highQuality
+            ? const ThumbnailSize(800, 800)
+            : const ThumbnailSize(200, 200);
+        final bytes = await asset.thumbnailDataWithSize(size);
+        if (mounted) {
+          setState(() {
+            _thumbnailBytes = bytes;
+            _isLoading = false;
+          });
+        }
+        return;
       }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -79,6 +101,39 @@ class _MediaThumbnailState extends State<MediaThumbnail> {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ),
+      );
+    } else if (_imageFile != null) {
+      child = Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            _imageFile!,
+            fit: widget.fit,
+          ),
+          if (widget.item.type == MediaItemType.video)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.play_arrow, size: 12, color: Colors.white),
+                    const SizedBox(width: 2),
+                    Text(
+                      _formatDuration(widget.item.duration),
+                      style: const TextStyle(color: Colors.white, fontSize: 10),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       );
     } else if (_thumbnailBytes != null) {
       child = Stack(

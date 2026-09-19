@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import '../../data/local/app_database.dart';
+import '../../data/services/file_media_parser_service.dart';
 import '../../data/services/media_scanner_service.dart';
 import '../../domain/model/geo_cluster.dart';
 import '../../domain/model/media_item.dart';
@@ -28,6 +30,7 @@ final mediaScannerServiceProvider = Provider<MediaScannerService>((ref) {
 class MediaListNotifier extends StateNotifier<AsyncValue<List<MediaItem>>> {
   final MediaScannerService _scannerService;
   final AppDatabase _db;
+  final ImagePicker _imagePicker = ImagePicker();
 
   MediaListNotifier(this._scannerService, this._db) : super(const AsyncValue.loading()) {
     scanMedia();
@@ -52,6 +55,35 @@ class MediaListNotifier extends StateNotifier<AsyncValue<List<MediaItem>>> {
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
+  }
+
+  /// 사용자가 기기 순정 갤러리 앱에서 원하는 사진/동영상을 직접 선택하여 가져오기 (ImagePicker)
+  Future<List<MediaItem>> pickFromSystemGallery() async {
+    try {
+      final List<XFile> pickedFiles = await _imagePicker.pickMultipleMedia();
+      if (pickedFiles.isEmpty) return [];
+
+      final filePaths = pickedFiles.map((f) => f.path).toList();
+      final parsedItems = await FileMediaParserService.instance.parseFiles(filePaths);
+
+      // 현재 미디어 목록 맨 앞에 추가
+      addImportedMediaItems(parsedItems);
+      return parsedItems;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 외부 공유(Intent) 또는 수동 추가로 전달받은 MediaItem 목록을 앱 상태에 즉시 통합
+  void addImportedMediaItems(List<MediaItem> newItems) {
+    if (newItems.isEmpty) return;
+
+    state = state.whenData((items) {
+      final existingIds = items.map((e) => e.id).toSet();
+      final uniqueNew = newItems.where((e) => !existingIds.contains(e.id)).toList();
+      // 최신순 정렬 유지되도록 상단에 병합
+      return [...uniqueNew, ...items];
+    });
   }
 
   /// 미디어에 코멘트 추가

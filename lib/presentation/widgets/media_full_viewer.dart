@@ -123,7 +123,7 @@ class _FullMediaItemState extends State<_FullMediaItem> {
   @override
   void didUpdateWidget(covariant _FullMediaItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id) {
+    if (oldWidget.item.id != widget.item.id || oldWidget.item.filePath != widget.item.filePath) {
       _loadFile();
     }
   }
@@ -138,21 +138,39 @@ class _FullMediaItemState extends State<_FullMediaItem> {
       return;
     }
 
-    final asset = await AssetEntity.fromId(widget.item.id);
-    if (asset != null) {
-      final file = await asset.file;
-      if (mounted) {
-        setState(() {
-          _file = file;
-          _isLoading = false;
-        });
+    // 1. 직접 파일 경로가 있는 경우
+    if (widget.item.filePath != null && widget.item.filePath!.isNotEmpty) {
+      final f = File(widget.item.filePath!);
+      if (await f.exists()) {
+        if (mounted) {
+          setState(() {
+            _file = f;
+            _isLoading = false;
+          });
+        }
+        return;
       }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    }
+
+    // 2. PhotoManager 에셋 파일 로드
+    try {
+      final asset = await AssetEntity.fromId(widget.item.id);
+      if (asset != null) {
+        final file = await asset.file;
+        if (mounted) {
+          setState(() {
+            _file = file;
+            _isLoading = false;
+          });
+        }
+        return;
       }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 

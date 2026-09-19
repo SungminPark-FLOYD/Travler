@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
@@ -28,13 +29,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
 
   Future<void> _initVideo() async {
     try {
-      final asset = await AssetEntity.fromId(widget.item.id);
-      if (asset == null) {
-        if (mounted) setState(() => _hasError = true);
-        return;
+      File? file;
+      if (widget.item.filePath != null && widget.item.filePath!.isNotEmpty) {
+        file = File(widget.item.filePath!);
+      } else {
+        final asset = await AssetEntity.fromId(widget.item.id);
+        if (asset != null) {
+          file = await asset.file;
+        }
       }
 
-      final file = await asset.file;
       if (file == null || !await file.exists()) {
         if (mounted) setState(() => _hasError = true);
         return;

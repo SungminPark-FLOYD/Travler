@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/utils/share_intent_manager.dart';
 import '../map/map_screen.dart';
 import '../timeline/timeline_screen.dart';
 import '../settings/settings_screen.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _currentIndex = 0;
 
   final _screens = const [
@@ -18,6 +20,21 @@ class _AppShellState extends State<AppShell> {
     TimelineScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 외부 갤러리 앱에서 "공유하기 -> Travler"로 유입된 미디어 감지 리스너 등록
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ShareIntentManager.instance.init(context, ref);
+    });
+  }
+
+  @override
+  void dispose() {
+    ShareIntentManager.instance.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

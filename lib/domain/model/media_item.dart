@@ -7,6 +7,7 @@ enum MediaItemType {
 
 class MediaItem {
   final String id;
+  final String? filePath; // 직접 선택하거나 공유받은 로컬 파일 경로 (File 지원)
   final String? title;
   final MediaItemType type;
   final LatLng? location;
@@ -19,6 +20,7 @@ class MediaItem {
 
   const MediaItem({
     required this.id,
+    this.filePath,
     this.title,
     required this.type,
     this.location,
@@ -34,6 +36,7 @@ class MediaItem {
 
   MediaItem copyWith({
     String? id,
+    String? filePath,
     String? title,
     MediaItemType? type,
     LatLng? location,
@@ -46,6 +49,7 @@ class MediaItem {
   }) {
     return MediaItem(
       id: id ?? this.id,
+      filePath: filePath ?? this.filePath,
       title: title ?? this.title,
       type: type ?? this.type,
       location: location ?? this.location,
